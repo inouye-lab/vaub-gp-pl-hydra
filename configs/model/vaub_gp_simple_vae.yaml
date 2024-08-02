@@ -1,28 +1,30 @@
-_target_: src.models.vaub_gp_module.VAUBGPModule
+_target_: src.models.vaub_gp_module_simple.VAUBGPModule
+
+latent_dim: 2
 
 optimizer_vae_1:
-  _target_: torch.optim.Adam
+  _target_: torch.optim.AdamW
   _partial_: true
-  lr: 2e-5
-  weight_decay: 0.0
+  lr: 1e-5
+  weight_decay: 0.01
 
 optimizer_vae_2:
-  _target_: torch.optim.Adam
+  _target_: torch.optim.AdamW
   _partial_: true
-  lr: 2e-5
-  weight_decay: 0.0
+  lr: 1e-5
+  weight_decay: 0.01
 
 optimizer_score:
-  _target_: torch.optim.Adam
+  _target_: torch.optim.AdamW
   _partial_: true
-  lr: 1e-4
-  weight_decay: 0.0
+  lr: 5e-4
+  weight_decay: 0.01
 
 optimizer_cls:
-  _target_: torch.optim.Adam
+  _target_: torch.optim.AdamW
   _partial_: true
-  lr: 1e-4
-  weight_decay: 0.0
+  lr: 5e-4
+  weight_decay: 0.01
 
 #scheduler:
 #  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
@@ -32,14 +34,12 @@ optimizer_cls:
 #  patience: 10
 
 vae1:
-  _target_: src.models.components.vae_cnn.CNN_VAE
-  latent_height: 2
-  latent_width: 2
+  _target_: src.models.components.vae_simple.VAE
+  _partial_: true
 
 vae2:
-  _target_: src.models.components.vae_cnn.CNN_VAE
-  latent_height: 2
-  latent_width: 2
+  _target_: src.models.components.vae_simple.VAE
+  _partial_: true
 
 score_prior:
   _target_: src.models.components.score_based_model.Score_fn
@@ -50,29 +50,27 @@ score_prior:
 
 unet:
   _target_: src.models.components.unet.UNet
-  in_dim: 256
-  out_dim: 256
+  _partial_: true
   num_timesteps: 100
   is_warm_init: false
 
 classifier:
-  _target_: src.models.components.classifier_net.CNN
-  input_height: 2
-  input_width: 2
+  _target_: src.models.components.classifier_net.ClassifierSimple
+  _partial_: true
 
 gp:
   _target_: src.models.components.gp_precomputed_model.GPModule
   _partial_: true
   metric_name: "CLIP"
   model_name: "ViT-L-14"
-  pretrained_dataset: "laion2b_s32b_b82k"
+  pretrained_dataset: "commonpool_xl_s13b_b90k"
 
 beta: 0.005
-gp_lambda: 1e-4
-block_size: 128
+gp_lambda: 4e-4
+block_size: 256
 cls_lambda: 1e-3
 is_vanilla: true
-loops: 10
+loops: 5
 
 # compile model for faster training with pytorch 2.0
 compile: false

@@ -6,9 +6,10 @@ from lightning import LightningModule
 from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.classification.accuracy import Accuracy
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 from ..utils.utils_gp import calculate_gp_loss
-from ..utils.utils_visual import display_reconstructed_and_flip_images
+from ..utils.utils_visual import display_reconstructed_and_flip_images, display_umap_for_latent
 
 class VAUBGPModule(LightningModule):
 
@@ -110,7 +111,7 @@ class VAUBGPModule(LightningModule):
 
         x = [x1.view((x1.shape[0], -1)), x2.view((x2.shape[0], -1))]
         recon_x = [recon_x1.view((x1.shape[0], -1)), recon_x2.view((x2.shape[0], -1))]
-        z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
+        z = torch.vstack((z1, z2))
         mean, logvar = torch.vstack((mean1, mean2)), torch.vstack((logvar1, logvar2))
 
         # update per loops
@@ -139,7 +140,7 @@ class VAUBGPModule(LightningModule):
             # GP loss
             gp_loss = self.gp_model.compute_gp_loss(
                 [x1_encoded, x2_encoded],
-                [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))],
+                [z1, z2],
                 block_size=self.hparams.block_size,
             )
             # gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))],
@@ -216,29 +217,68 @@ class VAUBGPModule(LightningModule):
         self.log("val/src_acc", self.val_src_acc, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/tgt_acc", self.val_tgt_acc, on_step=False, on_epoch=True, prog_bar=True)
 
-        plt_ori = display_reconstructed_and_flip_images(
-            epoch=self.current_epoch,
-            vae_model=self.src_vae,
-            flip_vae_model=self.tgt_vae,
-            data=x1,
-            dim=[1, 32, 32],
-            flip_dim=[1, 32, 32]
-        )
-        plt_flip = display_reconstructed_and_flip_images(
-            epoch=self.current_epoch,
-            vae_model=self.tgt_vae,
-            flip_vae_model=self.src_vae,
-            data=x2,
-            dim=[1, 32, 32],
-            flip_dim=[1, 32, 32]
-        )
-
         logger_experiment = self.logger.experiment
-        logger_experiment.add_figure("Original to Flipped", plt_ori.gcf(), self.global_step)
-        logger_experiment.add_figure("Flipped to Original", plt_flip.gcf(), self.global_step)
 
-        plt_ori.close()
-        plt_flip.close()
+        if self.global_rank == 0:
+
+            fig, axes = plt.subplots(3, 10, figsize=(10 * 3 / 2, 4.5))
+            plt_ori = display_reconstructed_and_flip_images(
+                axes=axes,
+                epoch=self.current_epoch,
+                vae_model=self.src_vae,
+                flip_vae_model=self.tgt_vae,
+                data=x1,
+                dim=[1, 32, 32],
+                flip_dim=[1, 32, 32]
+            )
+            logger_experiment.log({
+                "Original to Flipped": fig,
+            })
+            plt.close()
+
+            fig, axes = plt.subplots(3, 10, figsize=(10 * 3 / 2, 4.5))
+            plt_flip = display_reconstructed_and_flip_images(
+                axes=axes,
+                epoch=self.current_epoch,
+                vae_model=self.tgt_vae,
+                flip_vae_model=self.src_vae,
+                data=x2,
+                dim=[1, 32, 32],
+                flip_dim=[1, 32, 32]
+            )
+            logger_experiment.log({
+                "Flipped to Original": fig,
+            })
+            plt.close()
+
+            fig, axes = plt.subplots(1, 2, figsize=(10, 20))
+            plt_umap = display_umap_for_latent(
+                axes=axes,
+                epoch=self.current_epoch,
+                vae_1=self.src_vae,
+                vae_2=self.tgt_vae,
+                data_1=x1,
+                data_2=x2,
+                label_1=label1,
+                label_2=label2
+            )
+            plt.close()
+            logger_experiment.log({
+                "UMAP for Latent": fig,
+            })
+
+            # # log figures for tensorboard
+            # logger_experiment.add_figure("Original to Flipped", plt_ori.gcf(), self.global_step)
+            # logger_experiment.add_figure("Flipped to Original", plt_flip.gcf(), self.global_step)
+            # logger_experiment.add_figure("UMAP for Latent", plt_umap.gcf(), self.global_step)
+
+            # # log figures for wandb
+            # logger_experiment.log({
+            #     "Original to Flipped": plt_ori,
+            #     "Flipped to Original": plt_flip,
+            #     "UMAP for Latent": plt_umap,
+            # })
+
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
