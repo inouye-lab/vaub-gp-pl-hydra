@@ -90,6 +90,46 @@ class ClassifierSimple(nn.Module):
         x = self.fc2(x)
         return x
 
+class CustomClassifier(nn.Module):
+    def __init__(self, input_dim, num_classes=10, hidden_dims=None, dropout_rate=0.5, activation='relu'):
+        """
+        Args:
+            input_dim (int): Number of input features.
+            num_classes (int): Number of output classes.
+            hidden_dims (list of int, optional): List of hidden layer dimensions. Default is [512, 256, 128].
+            dropout_rate (float, optional): Dropout rate. Default is 0.5.
+            activation (str, optional): Activation function to use ('relu', 'leaky_relu', 'sigmoid', 'tanh'). Default is 'relu'.
+        """
+        super(CustomClassifier, self).__init__()
+
+        if hidden_dims is None:
+            hidden_dims = [512, 256, 128]
+
+        self.layers = nn.ModuleList()
+        current_dim = input_dim
+
+        # Create hidden layers
+        for hidden_dim in hidden_dims:
+            self.layers.append(nn.Linear(current_dim, hidden_dim))
+            if activation == 'relu':
+                self.layers.append(nn.ReLU(inplace=True))
+            elif activation == 'leaky_relu':
+                self.layers.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
+            elif activation == 'sigmoid':
+                self.layers.append(nn.Sigmoid())
+            elif activation == 'tanh':
+                self.layers.append(nn.Tanh())
+            self.layers.append(nn.Dropout(dropout_rate))
+            current_dim = hidden_dim
+
+        # Output layer
+        self.output_layer = nn.Linear(current_dim, num_classes)
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        x = self.output_layer(x)
+        return x
 
 # # Define a simple ResNet-like architecture for the classifier
 # class CNN(nn.Module):

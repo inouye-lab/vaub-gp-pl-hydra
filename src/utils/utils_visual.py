@@ -26,7 +26,7 @@ def display_reconstructed_images(epoch, vae_model, data, n_samples=10, dim=[1, 2
 
 
 def display_reconstructed_and_flip_images(axes, epoch, vae_model, flip_vae_model, data, n_samples=10, dim=[1, 32, 32],
-                                          flip_dim=[3, 32, 32], is_mnist=True, is_both=True):
+                                          flip_dim=[1, 32, 32], is_mnist=True, is_both=True):
     vae_model.eval()
     with torch.no_grad():
         data = data[:n_samples]
@@ -36,6 +36,14 @@ def display_reconstructed_and_flip_images(axes, epoch, vae_model, flip_vae_model
         recon_x = recon_x[:n_samples]
         recon_x_flip = recon_x_flip[:n_samples]
 
+        # print all data shapes
+        # print(f"Data shape: {data.shape}")
+        # print(f"Reconstructed shape: {recon_x.shape}")
+        # print(f"Reconstructed flip shape: {recon_x_flip.shape}")
+        # # print dim
+        # print(f"Dim: {dim}")
+        # print(f"Flip Dim: {flip_dim}")
+
         data = data.view(n_samples, dim[0], dim[1], dim[2])
         recon_x = recon_x.view(n_samples, dim[0], dim[1], dim[2])
         recon_x_flip = recon_x_flip.view(n_samples, flip_dim[0], flip_dim[1], flip_dim[2])
@@ -43,7 +51,7 @@ def display_reconstructed_and_flip_images(axes, epoch, vae_model, flip_vae_model
         # fig, axes = plt.subplots(3, n_samples, figsize=(n_samples * 3 / 2, 4.5))
         if is_mnist:
             main_color = 'gray'
-            flip_color = None
+            flip_color = 'gray'
         elif is_both:
             main_color = 'gray'
             flip_color = 'gray'
@@ -144,12 +152,16 @@ def display_umap_for_latent_old(epoch, vae_1, vae_2, data_1, data_2, label_1, la
 
     return plt
 
-def display_umap_for_latent(axes, epoch, vae_1, vae_2, data_1, data_2, label_1, label_2):
+def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, data_1, data_2, label_1, label_2):
     vae_1.eval()
     vae_2.eval()
     with torch.no_grad():
         _, z1, _, _ = vae_1(data_1)
         _, z2, _, _ = vae_2(data_2)
+
+        # flatten the data
+        z1 = z1.view(z1.shape[0], -1)
+        z2 = z2.view(z2.shape[0], -1)
 
         # Combine the datasets
         data = np.vstack((z1.cpu(), z2.cpu()))
@@ -174,12 +186,12 @@ def display_umap_for_latent(axes, epoch, vae_1, vae_2, data_1, data_2, label_1, 
         # Plot the data
         for domain in colors:
             subset = df[(df['domain'] == domain)]
-            axes[1].scatter(subset['UMAP1'], subset['UMAP2'], c=[colors[domain]], marker="s",
+            axes_total[1].scatter(subset['UMAP1'], subset['UMAP2'], c=[colors[domain]], marker="s",
                             alpha=1,
                             edgecolors='w', linewidth=0.5, label=f'{domain}')
 
         # Create a combined legend
-        axes[1].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
+        axes_total[1].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
 
         # Define markers and colors
         markers = {'domain1': 'X', 'domain2': 's'}
@@ -191,14 +203,26 @@ def display_umap_for_latent(axes, epoch, vae_1, vae_2, data_1, data_2, label_1, 
         for domain in markers:
             for label in unique_labels:
                 subset = df[(df['domain'] == domain) & (df['label'] == label)]
-                axes[0].scatter(subset['UMAP1'], subset['UMAP2'], c=[color_map[label]], marker=markers[domain], alpha=0.6,
+                axes_total[0].scatter(subset['UMAP1'], subset['UMAP2'], c=[color_map[label]], marker=markers[domain], alpha=0.6,
                            edgecolors='w', linewidth=0.5, label=f'{domain}-{label}')
 
         # Create a combined legend
-        handles, _ = axes[0].get_legend_handles_labels()
+        handles, _ = axes_total[0].get_legend_handles_labels()
         by_label = dict(zip(handles, _))
-        axes[0].legend(by_label.values(), by_label.keys(), title='Domain-Label', loc='best', bbox_to_anchor=(1.05, 1))
+        axes_total[0].legend(by_label.values(), by_label.keys(), title='Domain-Label', loc='best', bbox_to_anchor=(1.05, 1))
 
-        axes[0].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
+        axes_total[0].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
 
-    return axes
+        # Plot the data
+        count = 0
+        for label in unique_labels:
+            for domain in markers:
+                subset = df[(df['domain'] == domain) & (df['label'] == label)]
+                axes_individual[count//5, count%5].scatter(subset['UMAP1'], subset['UMAP2'], c=colors[domain], alpha=0.6,
+                           edgecolors='w', linewidth=0.5, label=f'{domain}-{label}')
+            axes_individual[count // 5, count % 5].set_title(f'Label {label} at Epoch {epoch}')
+            # axes_individual[count // 5, count % 5].axis('off')
+            count += 1
+
+
+    return axes_total, axes_individual

@@ -5,38 +5,37 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
 
-class ResidualBlockVAE(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ResidualBlockVAE, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(out_channels, eps=1e-5, momentum=0.1)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(out_channels, eps=1e-5, momentum=0.1)
-
-    def forward(self, x):
-        residual = x
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out += residual
-        return F.relu(out)
-
-
 class Encoder(nn.Module):
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, is_batchnorm=False):
         super(Encoder, self).__init__()
+        self.is_batchnorm = is_batchnorm
+
         self.conv1 = nn.Conv2d(1, 32, kernel_size=4, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
         self.fc1 = nn.Linear(64*8*8, 256)
+        self.bn3 = nn.BatchNorm1d(256)
         self.fc_mu = nn.Linear(256, latent_dim)
+        self.bn4 = nn.BatchNorm1d(latent_dim, affine=False)
         self.fc_logvar = nn.Linear(256, latent_dim)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = x.view(x.size(0), -1)  # Flatten
-        x = F.relu(self.fc1(x))
-        mu = self.fc_mu(x)
-        logvar = self.fc_logvar(x)
+        if self.is_batchnorm:
+            x = F.relu(self.bn1(self.conv1(x)))
+            x = F.relu(self.bn2(self.conv2(x)))
+            x = x.view(x.size(0), -1)
+            x = F.relu(self.bn3(self.fc1(x)))
+            mu = self.bn4(self.fc_mu(x))
+            logvar = self.fc_logvar(x)
+        else:
+            x = F.relu(self.conv1(x))
+            x = F.relu(self.conv2(x))
+            x = x.view(x.size(0), -1)
+            x = F.relu(self.fc1(x))
+            mu = self.fc_mu(x)
+            logvar = self.fc_logvar(x)
+
         return mu, logvar
 
 
@@ -58,9 +57,9 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, is_batchnorm=False, is_pnp=False):
         super(VAE, self).__init__()
-        self.encoder = Encoder(latent_dim)
+        self.encoder = Encoder(latent_dim, is_batchnorm=is_batchnorm)
         self.decoder = Decoder(latent_dim)
 
     def reparameterize(self, mu, logvar):
@@ -76,6 +75,21 @@ class VAE(nn.Module):
 
     def decode(self, z):
         return self.decoder(z)
+
+
+    def init_weights_fixed(self, seed=42):
+        """
+        Initialize all the weights of the model to the same small random values.
+        """
+        torch.manual_seed(seed)  # Set a fixed seed for reproducibility
+
+        def weights_init(m):
+            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
+                nn.init.uniform_(m.weight, a=-0.2, b=0.2)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+        self.apply(weights_init)
 
 
 def loss_function(recon_x, x, mu, logvar):

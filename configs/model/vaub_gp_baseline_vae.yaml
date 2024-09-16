@@ -1,14 +1,11 @@
 _target_: src.models.vaub_gp_module_simple.VAUBGPModule
 
-latent_dim: 16
-is_batchnorm: true
-is_pnp: false
-warm_epochs: 50
+latent_dim: 768
 
 optimizer_vae_1:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 2e-5
+  lr: 1e-5
   weight_decay: 0.01
 
 optimizer_vae_2:
@@ -20,7 +17,7 @@ optimizer_vae_2:
 optimizer_score:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 1e-3
+  lr: 5e-4
   weight_decay: 0.01
 
 optimizer_cls:
@@ -37,11 +34,11 @@ optimizer_cls:
 #  patience: 10
 
 vae1:
-  _target_: src.models.components.vae_simple.VAE
+  _target_: src.models.components.vae_baseline.VAE
   _partial_: true
 
 vae2:
-  _target_: src.models.components.vae_simple.VAE
+  _target_: src.models.components.vae_baseline.VAE
   _partial_: true
 
 score_prior:
@@ -68,12 +65,13 @@ gp:
   model_name: "ViT-L-14"
   pretrained_dataset: "commonpool_xl_s13b_b90k"
 
+is_pnp: true
 beta: 5e-3
 gp_lambda: 4e-4
 block_size: 256
 cls_lambda: 1e-3
 is_vanilla: true
-loops: 1
+loops: 5
 
 # compile model for faster training with pytorch 2.0
 compile: false

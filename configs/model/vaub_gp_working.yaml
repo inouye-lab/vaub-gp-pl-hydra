@@ -1,20 +1,15 @@
-_target_: src.models.vaub_gp_module_simple.VAUBGPModule
-
-latent_dim: 16
-is_batchnorm: true
-is_pnp: false
-warm_epochs: 50
+_target_: src.models.vaub_gp_module_working.VAUBGPModule
 
 optimizer_vae_1:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 2e-5
+  lr: 1e-4
   weight_decay: 0.01
 
 optimizer_vae_2:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 1e-5
+  lr: 1e-4
   weight_decay: 0.01
 
 optimizer_score:
@@ -26,7 +21,7 @@ optimizer_score:
 optimizer_cls:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 5e-4
+  lr: 1e-4
   weight_decay: 0.01
 
 #scheduler:
@@ -37,28 +32,39 @@ optimizer_cls:
 #  patience: 10
 
 vae1:
-  _target_: src.models.components.vae_simple.VAE
+  _target_: src.models.components.vae_res_cnn.ResConvVAE
+  type_of_dataset: "mnist"
+  is_2d: false
+  is_3d: false
   _partial_: true
 
 vae2:
-  _target_: src.models.components.vae_simple.VAE
+  _target_: src.models.components.vae_res_cnn.ResConvVAE
+  type_of_dataset: "mnist"
+  is_2d: false
+  is_3d: false
   _partial_: true
 
 score_prior:
-  _target_: src.models.components.score_based_model.Score_fn
+  _target_: src.models.components.score_based_model.Score_fn_noise
   _partial_: true
   sigma_min: 0.01
   sigma_max: 0.4
   num_timesteps: 100
+  is_add_latent_noise: true
 
 unet:
-  _target_: src.models.components.unet.UNet
+  _target_: src.models.components.unet.UNet_noise
   _partial_: true
   num_timesteps: 100
+  embedding_dim: 2
+  num_latent_noise_scale: 50
+  is_add_latent_noise: false
+  multiplier: 4
   is_warm_init: false
 
 classifier:
-  _target_: src.models.components.classifier_net.ClassifierSimple
+  _target_: src.models.components.classifier_net.CustomClassifier
   _partial_: true
 
 gp:
@@ -68,8 +74,18 @@ gp:
   model_name: "ViT-L-14"
   pretrained_dataset: "commonpool_xl_s13b_b90k"
 
-beta: 5e-3
-gp_lambda: 4e-4
+vaub_lambda: 1
+gp_lambda: 0.03
+recon_lambda: 1
+
+min_noise_scale: 0
+max_noise_scale: 0
+num_latent_noise_scale: 1
+
+latent_dim: 100
+latent_row_dim: 10
+latent_col_dim: 10
+
 block_size: 256
 cls_lambda: 1e-3
 is_vanilla: true

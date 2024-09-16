@@ -34,6 +34,9 @@ class VAUBGPModule(LightningModule):
         loops: int,
         compile: bool,
         latent_dim: int,
+        is_pnp: bool,
+        is_batchnorm: bool,
+        warm_epochs: int,
     ) -> None:
 
         super().__init__()
@@ -44,11 +47,15 @@ class VAUBGPModule(LightningModule):
         self.automatic_optimization = False
 
         # initialize all modules
-        self.src_vae = vae1(latent_dim=latent_dim)
-        self.tgt_vae = vae2(latent_dim=latent_dim)
+        self.src_vae = vae1(latent_dim=latent_dim, is_pnp=is_pnp, is_batchnorm=is_batchnorm)
+        self.tgt_vae = vae2(latent_dim=latent_dim, is_pnp=is_pnp, is_batchnorm=is_batchnorm)
         self.classifier = classifier(latent_dim=latent_dim)
         self.score_model = score_prior(model=unet(in_dim=latent_dim, out_dim=latent_dim))
         self.gp_model = gp(device=self.device)
+
+        # initialize model parameters
+        self.src_vae.init_weights_fixed()
+        self.tgt_vae.init_weights_fixed()
 
         # metric objects for calculating and averaging accuracy across batches
         self.train_acc = Accuracy(task="multiclass", num_classes=10)
@@ -79,15 +86,19 @@ class VAUBGPModule(LightningModule):
         if isinstance(recon_x, list) and isinstance(recon_x, list):
             for i in range(len(recon_x)):
                 if i == 0:
-                    recon_loss = nn.functional.mse_loss(recon_x[i], x[i], reduction='mean')
+                    recon_loss = nn.functional.mse_loss(recon_x[i], x[i], reduction='none').mean()
                 else:
-                    recon_loss += nn.functional.mse_loss(recon_x[i], x[i], reduction='mean')
+                    recon_loss += nn.functional.mse_loss(recon_x[i], x[i], reduction='none').mean()
         else:
-            recon_loss = nn.functional.mse_loss(recon_x, x, reduction='mean')
+            recon_loss = nn.functional.mse_loss(recon_x, x, reduction='none').mean()
         # kld_encoder_posterior = 0.5 * torch.sum(- 1 - logvar, dim=1).mean()
-        kld_encoder_posterior = -0.5 * torch.sum(logvar, dim=1).mean()
-        kld_prior = 0.5 * torch.sum(mean.pow(2) + logvar.exp())
-        kld_loss = kld_encoder_posterior + kld_prior
+
+        # Pay attention to the scaling here!!!
+        # kld_encoder_posterior = -0.5 * torch.sum(logvar, dim=1).mean()
+        kld_encoder_posterior = 0.5 * torch.mean(- 1 - logvar)
+
+        # kld_prior = 0.5 * torch.sum(mean.pow(2) + logvar.exp())
+        # kld_loss = kld_encoder_posterior + kld_priorf
         if score is not None and DSM is None:
             kld_loss = kld_encoder_posterior - score
         elif DSM is not None:
@@ -97,11 +108,29 @@ class VAUBGPModule(LightningModule):
         # print(f"score is {score}")
         # print(f"recon_loss is {recon_loss}")
 
-        return recon_loss + beta * kld_loss, recon_loss, kld_encoder_posterior, kld_prior, kld_loss
+        return recon_loss + beta * kld_loss, recon_loss, kld_encoder_posterior, kld_loss
+
+    def vanilla_vae_loss(self, recon_x, x, mean, logvar):
+
+        # print(recon_x.size(), x.size())
+        # Reconstruction loss (BCE or MSE)
+        # If x is binary (e.g., for image data), BCE is more appropriate.
+        recon_loss = F.binary_cross_entropy(recon_x, x, reduction='sum')
+
+        # KL Divergence
+        kl_divergence = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
+
+        # Total loss
+        loss = recon_loss + kl_divergence
+
+        return loss
 
     def training_step(
         self, batch, batch_idx
     ) -> torch.Tensor:
+
+        self.src_vae.train()
+        self.tgt_vae.train()
 
         _, (x1, x1_encoded, label1), (x2, x2_encoded, label2) = batch
         optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls = self.optimizers()
@@ -114,76 +143,105 @@ class VAUBGPModule(LightningModule):
         z = torch.vstack((z1, z2))
         mean, logvar = torch.vstack((mean1, mean2)), torch.vstack((logvar1, logvar2))
 
-        # update per loops
-        if (self.global_step % self.hparams.loops) == 0:
-
+        if self.current_epoch < self.hparams.warm_epochs:
             optimizer_vae_1.zero_grad()
             optimizer_vae_2.zero_grad()
-            optimizer_cls.zero_grad()
 
-            # Score loss
-            score = self.score_model.get_mixing_score_fn(
-                z, 30 * torch.ones(z.shape[0], device=z.device).type(torch.long),
-                detach=True, is_residual=True, is_vanilla=self.hparams.is_vanilla,
-                alpha=None) - 0.05 * z
-            score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum()/z.shape[0]
-            # score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
-
-            vae_loss, recon_loss, kld_encoder_posterior, _, kld_loss = self.vae_loss(recon_x, x, mean, logvar,
-                                                                                   self.hparams.beta,
-                                                                                   score=score, DSM=None)
-
-            # CLS loss
-            output_cls = self.classifier(z1)
-            classifier_loss = F.cross_entropy(output_cls, label1, reduction='mean')
-
-            # GP loss
-            gp_loss = self.gp_model.compute_gp_loss(
-                [x1_encoded, x2_encoded],
-                [z1, z2],
-                block_size=self.hparams.block_size,
-            )
-            # gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))],
-            #                             [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
-
-            tot_loss = vae_loss + self.hparams.gp_lambda*gp_loss + self.hparams.cls_lambda*classifier_loss
-
-            # print(f"tot_loss: {tot_loss:.2f}")
-            # print(f"vae_loss: {vae_loss:.2f}")
-            # print(f"gp_loss: {gp_loss:.2f}")
-            # print(f"classifier_loss: {classifier_loss:.2f}")
-
-            tot_loss.backward()
+            vae_loss_src = self.vanilla_vae_loss(recon_x[0], x[0], mean1, logvar1)
+            vae_loss_tgt = self.vanilla_vae_loss(recon_x[1], x[1], mean2, logvar2)
+            vae_loss_src.backward()
+            vae_loss_tgt.backward()
 
             optimizer_vae_1.step()
             optimizer_vae_2.step()
-            optimizer_cls.step()
 
-            # update and log metrics per batch
-            self.log("loss/tot_loss", tot_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss/vae_loss", vae_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss/gp_loss", gp_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss/classifier_loss", classifier_loss, on_step=True, on_epoch=False, sync_dist=True)
+            self.log("loss_warm/vae_loss_src", vae_loss_src/x1.shape[0], on_step=True, on_epoch=False, sync_dist=True)
+            self.log("loss_warm/vae_loss_tgt", vae_loss_tgt/x2.shape[0], on_step=True, on_epoch=False, sync_dist=True)
+        else:
+            # update per loops
+            if (self.global_step % self.hparams.loops) == 0:
 
-            self.log("loss_detail/recon_loss", recon_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss_detail/kld_encoder_posterior", kld_encoder_posterior, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss_detail/kld_loss", kld_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss_detail/score", score, on_step=True, on_epoch=False, sync_dist=True)
+                optimizer_vae_1.zero_grad()
+                optimizer_vae_2.zero_grad()
+                optimizer_cls.zero_grad()
 
-            self.train_acc(output_cls, label1)
-            self.log("train/acc", self.train_acc, on_step=True, on_epoch=False, sync_dist=True)
-            self.train_loss(tot_loss)
+                # Score loss
+                score = self.score_model.get_mixing_score_fn(
+                    z, 30 * torch.ones(z.shape[0], device=z.device).type(torch.long),
+                    detach=True, is_residual=True, is_vanilla=self.hparams.is_vanilla,
+                    alpha=None) - 0.05 * z
 
-        # update the score model
-        dsm_loss = self.score_model.update_score_fn(z.detach(), optimizer=optimizer_score, max_timestep=None, is_mixing=True,
-                                                    is_residual=True, is_vanilla=self.hparams.is_vanilla, alpha=None)
+                # score = self.score_model.get_mixing_score_fn(
+                #     z, 30 * torch.ones(z.shape[0], device=z.device).type(torch.long),
+                #     detach=True, is_residual=True, is_vanilla=self.hparams.is_vanilla,
+                #     alpha=None)
 
-        # print(f"dsm_loss: {dsm_loss:.2f}")
+                score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum()/z.shape[0]
+                # score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
 
-        self.log("loss_detail/dsm_loss", dsm_loss, on_step=True, on_epoch=False, sync_dist=True)
+                vae_loss, recon_loss, kld_encoder_posterior, kld_loss = self.vae_loss(recon_x, x, mean, logvar,
+                                                                                       self.hparams.beta,
+                                                                                       score=score, DSM=None)
 
-        # update and log metrics per epoch
-        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
+                # CLS loss
+                output_cls = self.classifier(z1)
+                classifier_loss = F.cross_entropy(output_cls, label1, reduction='mean')
+
+                # GP loss
+                gp_loss = self.gp_model.compute_gp_loss(
+                    [x1_encoded, x2_encoded],
+                    [z1, z2],
+                    block_size=self.hparams.block_size,
+                )
+                # gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))],
+                #                             [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
+
+                tot_loss = vae_loss + self.hparams.gp_lambda*gp_loss + self.hparams.cls_lambda*classifier_loss
+
+                # print(f"tot_loss: {tot_loss:.2f}")
+                # print(f"vae_loss: {vae_loss:.2f}")
+                # print(f"gp_loss: {gp_loss:.2f}")
+                # print(f"classifier_loss: {classifier_loss:.2f}")
+
+                tot_loss.backward()
+
+                optimizer_vae_1.step()
+                optimizer_vae_2.step()
+                optimizer_cls.step()
+
+                # update and log metrics per batch
+                self.log("loss/tot_loss", tot_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss/vae_loss", vae_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss/gp_loss", gp_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss/classifier_loss", classifier_loss, on_step=True, on_epoch=False, sync_dist=True)
+
+                self.log("loss_detail/recon_loss", recon_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss_detail/kld_encoder_posterior", kld_encoder_posterior, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss_detail/kld_loss", kld_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss_detail/score", score, on_step=True, on_epoch=False, sync_dist=True)
+
+                self.train_acc(output_cls, label1)
+                self.log("train/acc", self.train_acc, on_step=True, on_epoch=False, sync_dist=True)
+                self.train_loss(tot_loss)
+
+            # recompute z
+            self.src_vae.eval()
+            self.src_vae.eval()
+            with torch.no_grad():
+                _, z1, _, _ = self.src_vae(x1)
+                _, z2, _, _ = self.tgt_vae(x2)
+                z = torch.vstack((z1, z2))
+
+            # update the score model
+            dsm_loss = self.score_model.update_score_fn(z, optimizer=optimizer_score, max_timestep=None, is_mixing=True,
+                                                        is_residual=True, is_vanilla=self.hparams.is_vanilla, alpha=None)
+
+            # print(f"dsm_loss: {dsm_loss:.2f}")
+
+            self.log("loss_detail/dsm_loss", dsm_loss, on_step=True, on_epoch=False, sync_dist=True)
+
+            # update and log metrics per epoch
+            self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
@@ -228,8 +286,8 @@ class VAUBGPModule(LightningModule):
                 vae_model=self.src_vae,
                 flip_vae_model=self.tgt_vae,
                 data=x1,
-                dim=[1, 32, 32],
-                flip_dim=[1, 32, 32]
+                dim=x1.shape[1:],
+                flip_dim=x2.shape[1:],
             )
             logger_experiment.log({
                 "Original to Flipped": fig,
@@ -243,17 +301,19 @@ class VAUBGPModule(LightningModule):
                 vae_model=self.tgt_vae,
                 flip_vae_model=self.src_vae,
                 data=x2,
-                dim=[1, 32, 32],
-                flip_dim=[1, 32, 32]
+                dim=x1.shape[1:],
+                flip_dim=x2.shape[1:],
             )
             logger_experiment.log({
                 "Flipped to Original": fig,
             })
             plt.close()
 
-            fig, axes = plt.subplots(1, 2, figsize=(10, 20))
+            fig_total, axes_total = plt.subplots(1, 2, figsize=(20, 10))
+            fig_individual, axes_individual = plt.subplots(2, 5, figsize=(40, 8))
             plt_umap = display_umap_for_latent(
-                axes=axes,
+                axes_total=axes_total,
+                axes_individual=axes_individual,
                 epoch=self.current_epoch,
                 vae_1=self.src_vae,
                 vae_2=self.tgt_vae,
@@ -262,10 +322,13 @@ class VAUBGPModule(LightningModule):
                 label_1=label1,
                 label_2=label2
             )
-            plt.close()
             logger_experiment.log({
-                "UMAP for Latent": fig,
+                "UMAP for Latent": fig_total,
+                "UMAP for Each Class": fig_individual,
             })
+            fig_individual.tight_layout()
+            plt.close(fig_total)
+            plt.close(fig_individual)
 
             # # log figures for tensorboard
             # logger_experiment.add_figure("Original to Flipped", plt_ori.gcf(), self.global_step)

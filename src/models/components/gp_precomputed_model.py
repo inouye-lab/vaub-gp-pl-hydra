@@ -137,6 +137,7 @@ class GPModule(nn.Module):
             # dist_mat_list.append(squared_dists**(1/p))
             dist_mat_list.append(squared_dists)
 
+
         return dist_mat_list
 
     def compute_gp_loss(self, enc_list: list, z_list: list, block_size: Union[int, None] = None) -> torch.Tensor:
@@ -163,5 +164,3 @@ class GPModule(nn.Module):
                 tot_gp_loss += ((dist_mat_x-dist_mat_z)**2).sum()/(len(dist_mat_x)**2)
 
         return tot_gp_loss
-
-

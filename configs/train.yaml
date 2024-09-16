@@ -5,7 +5,7 @@
 defaults:
   - _self_
   - data: mnist_usps_pair
-  - model: vaub_gp_simple_vae
+  - model: vaub_gp_working
   - callbacks: default
   - logger: wandb # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: ddp

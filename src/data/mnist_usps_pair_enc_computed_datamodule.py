@@ -60,6 +60,7 @@ class MNISTUSPSPairEncModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         train_val_split: Tuple[float, float] = (0.9, 0.1),
+        postfix: str = None,
     ) -> None:
 
         super().__init__()
@@ -69,11 +70,11 @@ class MNISTUSPSPairEncModule(LightningDataModule):
         self.save_hyperparameters(logger=False)
 
         # data transformations
-        self.transform = v2.Compose([
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Resize(size=(32, 32))
-        ])
+        # self.transform = v2.Compose([
+        #     v2.ToImage(),
+        #     v2.ToDtype(torch.float32, scale=True),
+        #     v2.Resize(size=(32, 32))
+        # ])
 
         self.train_set_mnist: Optional[Dataset] = None
         self.val_set_mnist: Optional[Dataset] = None
@@ -135,20 +136,20 @@ class MNISTUSPSPairEncModule(LightningDataModule):
 
             train_val_set_mnist = EncodedMNISTUSPS(torch.load(
                 os.path.join(self.hparams.data_dir,
-                             'encoded_mnist/encoded_mnist_train_ViT-L-14_laion2b_s32b_b82k.pth'))
+                             f'encoded_mnist/encoded_mnist_train_{self.hparams.postfix}.pth'))
             )
             train_val_set_usps = EncodedMNISTUSPS(torch.load(
                 os.path.join(self.hparams.data_dir,
-                             'encoded_usps/encoded_usps_train_ViT-L-14_laion2b_s32b_b82k.pth'))
+                             f'encoded_usps/encoded_usps_train_{self.hparams.postfix}.pth'))
             )
 
             self.test_set_mnist = EncodedMNISTUSPS(torch.load(
                 os.path.join(self.hparams.data_dir,
-                             'encoded_mnist/encoded_mnist_test_ViT-L-14_laion2b_s32b_b82k.pth'))
+                             f'encoded_mnist/encoded_mnist_test_{self.hparams.postfix}.pth'))
             )
             self.test_set_usps = EncodedMNISTUSPS(torch.load(
                 os.path.join(self.hparams.data_dir,
-                             'encoded_usps/encoded_usps_test_ViT-L-14_laion2b_s32b_b82k.pth'))
+                             f'encoded_usps/encoded_usps_test_{self.hparams.postfix}.pth'))
             )
 
             self.train_set_mnist, self.val_set_mnist = random_split(
