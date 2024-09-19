@@ -248,6 +248,9 @@ class VAUBGPModule(LightningModule):
                 self.log("loss_detail/kld_loss", kld_loss, on_step=True, on_epoch=False, sync_dist=True)
                 self.log("loss_detail/score", score, on_step=True, on_epoch=False, sync_dist=True)
 
+                self.log("latent_space/var_src", logvar1.exp().mean(), on_step=True, on_epoch=False, sync_dist=True)
+                self.log("latent_space/var_tgt", logvar2.exp().mean(), on_step=True, on_epoch=False, sync_dist=True)
+
                 self.train_acc(output_cls, label1)
                 self.log("train/acc", self.train_acc, on_step=True, on_epoch=False, sync_dist=True)
                 self.train_loss(tot_loss)
@@ -264,7 +267,7 @@ class VAUBGPModule(LightningModule):
             z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
 
             # update the score model
-            dsm_loss = self.score_model.update_score_fn(z,
+            dsm_loss = self.score_model.update_score_fn(z.detach(),
                                                         latent_noise_idx=latent_noise_idx,
                                                         optimizer=optimizer_score,
                                                         max_timestep=None,

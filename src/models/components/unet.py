@@ -6,10 +6,10 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_dim, out_dim):
         super(ResidualBlock, self).__init__()
         self.fc1 = nn.Linear(in_dim, out_dim)
-        self.ln1 = nn.LayerNorm(out_dim, elementwise_affine=False)
+        self.ln1 = nn.LayerNorm(out_dim, elementwise_affine=True)
         self.swish = nn.SiLU()
         self.fc2 = nn.Linear(out_dim, out_dim)
-        self.ln2 = nn.LayerNorm(out_dim, elementwise_affine=False)
+        self.ln2 = nn.LayerNorm(out_dim, elementwise_affine=True)
 
     def forward(self, x):
         identity = x
@@ -90,9 +90,9 @@ class UNet_noise(nn.Module):
             nn.Linear(in_dim, multiplier*in_dim),
             nn.SiLU(),
             ResidualBlock(multiplier*in_dim, multiplier*in_dim),
-            nn.Dropout(0.1),
+            # nn.Dropout(0.1),
             ResidualBlock(multiplier*in_dim, multiplier*in_dim),
-            nn.Dropout(0.1)
+            # nn.Dropout(0.1)
         )
 
         # Define decoder layers
@@ -100,9 +100,9 @@ class UNet_noise(nn.Module):
             nn.Linear(multiplier*in_dim + embedding_dim, multiplier*in_dim) if not is_add_latent_noise else nn.Linear(multiplier*in_dim + embedding_dim + embedding_dim, multiplier*in_dim),
             nn.SiLU(),
             ResidualBlock(multiplier*in_dim, multiplier*in_dim),
-            nn.Dropout(0.1),
+            # nn.Dropout(0.1),
             ResidualBlock(multiplier*in_dim, multiplier*in_dim),
-            nn.Dropout(0.1),
+            # nn.Dropout(0.1),
             nn.Linear(multiplier*in_dim, out_dim)
         )
 

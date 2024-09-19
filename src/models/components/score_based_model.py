@@ -460,6 +460,9 @@ class Score_fn_noise(nn.Module):
     # When verbose is true, gets the average loss up until last verbose and saves to loss dict
     def update_score_fn(self, x, optimizer, latent_noise_idx=None, alpha=None, max_timestep=None, t=None, verbose=False,
                         is_mixing=False, is_residual=False, is_vanilla=False, divide_by_sigma=False):
+
+        self.model.train()
+
         # TODO: Add ema optimization
         if max_timestep is None or max_timestep > self.num_timesteps:
             max_timestep = self.num_timesteps
