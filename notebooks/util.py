@@ -1623,7 +1623,7 @@ def pairwise_distances(x, y=None):
     # Clamp to ensure no negative distances (due to floating point errors)
     dist = torch.clamp(dist, 0.0, np.inf)
 
-    dist = dist / dist.sum()
+    # dist = dist / dist.sum()
     # dist = nn.functional.normalize(dist, p=1)
     return dist / dist.max()
 

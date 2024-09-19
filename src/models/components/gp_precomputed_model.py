@@ -12,17 +12,15 @@ from typing import Union
 
 class CLIPModule(nn.Module):
 
-    def __init__(self, model_name, pretrained_dataset, device):
+    def __init__(self, device, dist_mode='cosine'):
         super().__init__()
 
         self.device = device
-        # self.model = model
-        # self.preprocess = preprocess
+        self.dist_mode = dist_mode
 
     def to_device(self, device):
 
         self.device = device
-        # self.model = self.model.to(device)
 
     def get_dist_mat(self, encoded_batch, block_index_list=None):
 
@@ -37,11 +35,18 @@ class CLIPModule(nn.Module):
             similarity_matrix = torch.mm(batch1_norm, batch2_norm.transpose(0, 1))
             return 1-similarity_matrix
 
+        def L2_dist_matrix(batch1, batch2):
+            return torch.cdist(batch1, batch2, p=2)**2
+
         dist_matrix_array = []
         for block_index in block_index_list:
             image_features_1 = encoded_batch[block_index]
-            image_features_1 /= image_features_1.norm(dim=-1, keepdim=True)
-            dist_matrix_array.append(cosine_dist_matrix(image_features_1, image_features_1, dim=-1))
+
+            if self.dist_mode == 'cosine':
+                image_features_1 /= image_features_1.norm(dim=-1, keepdim=True)
+                dist_matrix_array.append(cosine_dist_matrix(image_features_1, image_features_1, dim=-1))
+            elif self.dist_mode == 'L2':
+                dist_matrix_array.append(L2_dist_matrix(image_features_1, image_features_1))
 
         return dist_matrix_array
 
@@ -89,25 +94,18 @@ class LPIPSModule_(nn.Module):
 
 class GPModule(nn.Module):
 
-    def __init__(self, metric_name, device, **kwargs):
+    def __init__(self, device, diff="MSE", mode="max", dist_x_mode="cosine", **kwargs):
         super().__init__()
 
-        # print(f"GP module on device {device}")
+        self.device = device
+        self.mode = mode
+        self.kwargs = kwargs
+        self.diff = diff
 
-        if metric_name == "CLIP":
-            self.dist_module = CLIPModule(
-                model_name=kwargs.get("model_name"),
-                pretrained_dataset=kwargs.get("pretrained_dataset"),
-                device=device,
-            )
-        elif metric_name == "LPIPS":
-            sys.exit("LPIPS is not supported yet")
-            # self.dist_module = LPIPSModule(
-            #     net_name=kwargs.get("net_name"),
-            #     device=device,
-            # )
-        else:
-            sys.exit("Wrong metric for GP module")
+        self.dist_module = CLIPModule(
+            device=device,
+            dist_mode=dist_x_mode
+        )
 
         self.device = device
 
@@ -123,15 +121,16 @@ class GPModule(nn.Module):
             else:
                 z_block = z[block_index]
 
-            # Expand dimensions to create pairs of vectors
-            z1 = z_block.unsqueeze(1)  # (batch_size, 1, num_features)
-            z2 = z_block.unsqueeze(0)  # (1, batch_size, num_features)
-
-            # Calculate squared differences between each pair
-            squared_diffs = (z1 - z2).pow(p)
-
-            # Sum along the feature dimension (last dimension) to get squared distances
-            squared_dists = squared_diffs.mean(dim=-1)
+            # # Expand dimensions to create pairs of vectors
+            # z1 = z_block.unsqueeze(1)  # (batch_size, 1, num_features)
+            # z2 = z_block.unsqueeze(0)  # (1, batch_size, num_features)
+            #
+            # # Calculate squared differences between each pair
+            # squared_diffs = (z1 - z2).pow(p)
+            #
+            # # Sum along the feature dimension (last dimension) to get squared distances
+            # squared_dists = squared_diffs.mean(dim=-1)
+            squared_dists = torch.cdist(z_block, z_block, p=p)**2
 
             # Take the square root to get Euclidean distances
             # dist_mat_list.append(squared_dists**(1/p))
@@ -140,7 +139,11 @@ class GPModule(nn.Module):
 
         return dist_mat_list
 
-    def compute_gp_loss(self, enc_list: list, z_list: list, block_size: Union[int, None] = None) -> torch.Tensor:
+    def compute_gp_loss(self,
+                        enc_list: list,
+                        z_list: list,
+                        block_size: Union[int, None] = None,
+                        ) -> torch.Tensor:
 
         batch_size = len(enc_list[0])
         if block_size is None:
@@ -151,16 +154,30 @@ class GPModule(nn.Module):
         block_index_list = [block.to(self.device) for block in block_index_list]
         tot_gp_loss = 0
 
-        for enc, z in zip(enc_list, z_list):
+        for domain_idx, (enc, z) in enumerate(zip(enc_list, z_list)):
             # print(x.device, z.device)
             dist_mat_x_list = self.dist_module.get_dist_mat(enc, block_index_list)
             # print(dist_mat_x_list[0])
             dist_mat_z_list = self.get_euc_dist_mat(z, block_index_list)
 
-            for dist_mat_x, dist_mat_z in zip(dist_mat_x_list, dist_mat_z_list):
+            for block_idx, (dist_mat_x, dist_mat_z) in enumerate(zip(dist_mat_x_list, dist_mat_z_list)):
                 # print(dist_mat_x.size(), dist_mat_x.max())
-                dist_mat_x /= dist_mat_x.max()
+                if self.mode == "max":
+                    dist_mat_x = dist_mat_x / dist_mat_x.max()
+                    dist_mat_z = dist_mat_z / dist_mat_z.max()
+                elif self.mode == "binarize":
+                    threshold = self.kwargs.get(f"threshold_{domain_idx}")
+                    dist_mat_x[dist_mat_x > threshold] = 1
+                    dist_mat_x[dist_mat_x <= threshold] = 0
+                    dist_mat_z = dist_mat_z / dist_mat_z.max()
+                else:
+                    raise ValueError(f"Invalid mode for distance matrix for x space{self.mode}")
 
-                tot_gp_loss += ((dist_mat_x-dist_mat_z)**2).sum()/(len(dist_mat_x)**2)
+                if self.diff == "MSE":
+                    tot_gp_loss += ((dist_mat_x-dist_mat_z)**2).mean()
+                elif self.diff == "MAE":
+                    tot_gp_loss += (dist_mat_x-dist_mat_z).abs().mean()
+                else:
+                    raise ValueError(f"Invalid difference metric for distance matrix{self.diff}")
 
         return tot_gp_loss

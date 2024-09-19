@@ -46,7 +46,7 @@ class ResConvVAE(nn.Module):
         z = self.reparameterize(mu, logvar)
         return self.decoder(z), z, mu.view((z.shape[0], -1)), logvar.view((z.shape[0], -1))
 
-    def init_weights_fixed(self, seed=42):
+    def init_weights_fixed(self, seed=42, init_scale=0.1):
         """
         Initialize all the weights of the model to the same small random values.
         """
@@ -54,7 +54,7 @@ class ResConvVAE(nn.Module):
 
         def weights_init(m):
             if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
-                nn.init.uniform_(m.weight, a=-0.1, b=0.1)
+                nn.init.uniform_(m.weight, a=-init_scale, b=init_scale)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 

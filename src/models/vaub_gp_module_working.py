@@ -40,6 +40,8 @@ class VAUBGPModule(LightningModule):
         min_noise_scale: float,
         max_noise_scale: float,
         num_latent_noise_scale: int,
+        warm_score_epochs: int,
+        init_scale: float,
     ) -> None:
 
         super().__init__()
@@ -52,6 +54,10 @@ class VAUBGPModule(LightningModule):
         # initialize all modules
         self.src_vae = vae1(latent_height=latent_row_dim, latent_width=latent_col_dim)
         self.tgt_vae = vae2(latent_height=latent_row_dim, latent_width=latent_col_dim)
+
+        self.src_vae.init_weights_fixed(init_scale=init_scale)
+        self.tgt_vae.init_weights_fixed(init_scale=init_scale)
+
         self.classifier = classifier(input_dim=latent_dim)
         self.score_model = score_prior(model=unet(in_dim=latent_dim,
                                                   out_dim=latent_dim,
@@ -159,118 +165,120 @@ class VAUBGPModule(LightningModule):
         self, batch, batch_idx
     ) -> torch.Tensor:
 
-        _, (x1, x1_encoded, label1), (x2, x2_encoded, label2) = batch
-        optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls = self.optimizers()
+        with torch.autograd.detect_anomaly(True):
 
-        self.src_vae.train()
-        self.tgt_vae.train()
+            _, (x1, x1_encoded, label1), (x2, x2_encoded, label2) = batch
+            optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls = self.optimizers()
 
-        recon_x1, z1, mean1, logvar1 = self.src_vae(x1)
-        recon_x2, z2, mean2, logvar2 = self.tgt_vae(x2)
+            self.src_vae.train()
+            self.tgt_vae.train()
 
-        x = [x1.view((x1.shape[0], -1)), x2.view((x2.shape[0], -1))]
-        recon_x = [recon_x1.view((x1.shape[0], -1)), recon_x2.view((x2.shape[0], -1))]
-        z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
-        mean, logvar = torch.vstack((mean1, mean2)), torch.vstack((logvar1, logvar2))
-        labels = torch.vstack((label1, label2))
+            recon_x1, z1, mean1, logvar1 = self.src_vae(x1)
+            recon_x2, z2, mean2, logvar2 = self.tgt_vae(x2)
 
-        batch_size = x1.shape[0]
-        latent_noise_idx = torch.randint(0, self.hparams.num_latent_noise_scale, (2 * batch_size,))
-        weighting = self.weighting_list[latent_noise_idx].view(2 * batch_size, 1)
-        latent_noise_scale = self.latent_noise_scale_list[latent_noise_idx]
+            x = [x1.view((x1.shape[0], -1)), x2.view((x2.shape[0], -1))]
+            recon_x = [recon_x1.view((x1.shape[0], -1)), recon_x2.view((x2.shape[0], -1))]
+            z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
+            mean, logvar = torch.vstack((mean1, mean2)), torch.vstack((logvar1, logvar2))
+            labels = torch.vstack((label1, label2))
 
-        # update per loops
-        if (self.global_step % self.hparams.loops) == 0:
+            batch_size = x1.shape[0]
+            latent_noise_idx = torch.randint(0, self.hparams.num_latent_noise_scale, (2 * batch_size,))
+            weighting = self.weighting_list[latent_noise_idx].view(2 * batch_size, 1)
+            latent_noise_scale = self.latent_noise_scale_list[latent_noise_idx]
 
-            optimizer_vae_1.zero_grad()
-            optimizer_vae_2.zero_grad()
-            optimizer_cls.zero_grad()
+            # update per loops
+            if (((self.global_step % self.hparams.loops) == 0) and
+                    (self.current_epoch > self.hparams.warm_score_epochs)):
 
-            # Score loss
-            score = self.score_model.get_mixing_score_fn(
-                z, 30*torch.ones(z.shape[0], device=z.device).type(torch.long),
-                latent_noise_idx.type(torch.long), detach=True, is_residual=True,
-                is_vanilla=self.hparams.is_vanilla,
-                alpha=None) - 0.05 * z
+                optimizer_vae_1.zero_grad()
+                optimizer_vae_2.zero_grad()
+                optimizer_cls.zero_grad()
 
-            # score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum()/z.shape[0]
-            score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
-            vaub_loss, recon_loss, kld_encoder_posterior, _, kld_loss = self.vae_loss_lambda(recon_x, x, mean, logvar,
-                                                                                            score=score, DSM=None,
-                                                                                            weighting=None)
-            vaub_loss = self.hparams.vaub_lambda * vaub_loss
-            recon_loss = self.hparams.recon_lambda * recon_loss
+                # Score loss
+                score = self.score_model.get_mixing_score_fn(
+                    z, 30*torch.ones(z.shape[0], device=z.device).type(torch.long),
+                    latent_noise_idx.type(torch.long), detach=True, is_residual=True,
+                    is_vanilla=self.hparams.is_vanilla,
+                    alpha=None) - 0.05 * z
 
-            # CLS loss
-            output_cls = self.classifier(mean1.view((z1.shape[0], -1)).detach())
-            # output_cls = self.classifier(z1)
-            classifier_loss = F.cross_entropy(output_cls, label1, reduction='none').mean()
+                # score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum()/z.shape[0]
+                score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
+                vaub_loss, recon_loss, kld_encoder_posterior, _, kld_loss = self.vae_loss_lambda(recon_x, x, mean, logvar,
+                                                                                                score=score, DSM=None,
+                                                                                                weighting=None)
+                vaub_loss = self.hparams.vaub_lambda * vaub_loss
+                recon_loss = self.hparams.recon_lambda * recon_loss
 
-            # GP loss
-            gp_loss = self.gp_model.compute_gp_loss(
-                [x1_encoded, x2_encoded],
-                [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))],
-                block_size=self.hparams.block_size,
-            )*self.hparams.gp_lambda
-            # gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))],
-            #                             [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
+                # CLS loss
+                output_cls = self.classifier(mean1.view((z1.shape[0], -1)).detach())
+                # output_cls = self.classifier(z1)
+                classifier_loss = F.cross_entropy(output_cls, label1, reduction='none').mean()
 
-            tot_loss = vaub_loss + recon_loss + gp_loss
+                # GP loss
+                gp_loss = self.gp_model.compute_gp_loss(
+                    [x1_encoded, x2_encoded],
+                    [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))],
+                    block_size=self.hparams.block_size,
+                )*self.hparams.gp_lambda
+                # gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))],
+                #                             [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
 
-            # print(f"tot_loss: {tot_loss:.2f}")
-            # print(f"vae_loss: {vae_loss:.2f}")
-            # print(f"gp_loss: {gp_loss:.2f}")
-            # print(f"classifier_loss: {classifier_loss:.2f}")
+                tot_loss = vaub_loss + recon_loss + gp_loss
 
-            tot_loss.backward(retain_graph=True)
-            classifier_loss.backward()
+                # print(f"tot_loss: {tot_loss:.2f}")
+                # print(f"vae_loss: {vae_loss:.2f}")
+                # print(f"gp_loss: {gp_loss:.2f}")
+                # print(f"classifier_loss: {classifier_loss:.2f}")
+                tot_loss.backward(retain_graph=True)
+                classifier_loss.backward()
 
-            optimizer_vae_1.step()
-            optimizer_vae_2.step()
-            optimizer_cls.step()
+                optimizer_vae_1.step()
+                optimizer_vae_2.step()
+                optimizer_cls.step()
 
-            # update and log metrics per batch
-            self.log("loss/tot_loss", tot_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss/vae_loss", vaub_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss/gp_loss", gp_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss/classifier_loss", classifier_loss, on_step=True, on_epoch=False, sync_dist=True)
+                # update and log metrics per batch
+                self.log("loss/tot_loss", tot_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss/vae_loss", vaub_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss/gp_loss", gp_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss/classifier_loss", classifier_loss, on_step=True, on_epoch=False, sync_dist=True)
 
-            self.log("loss_detail/recon_loss", recon_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss_detail/kld_encoder_posterior", kld_encoder_posterior, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss_detail/kld_loss", kld_loss, on_step=True, on_epoch=False, sync_dist=True)
-            self.log("loss_detail/score", score, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss_detail/recon_loss", recon_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss_detail/kld_encoder_posterior", kld_encoder_posterior, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss_detail/kld_loss", kld_loss, on_step=True, on_epoch=False, sync_dist=True)
+                self.log("loss_detail/score", score, on_step=True, on_epoch=False, sync_dist=True)
 
-            self.train_acc(output_cls, label1)
-            self.log("train/acc", self.train_acc, on_step=True, on_epoch=False, sync_dist=True)
-            self.train_loss(tot_loss)
+                self.train_acc(output_cls, label1)
+                self.log("train/acc", self.train_acc, on_step=True, on_epoch=False, sync_dist=True)
+                self.train_loss(tot_loss)
 
-        latent_noise_idx = torch.randint(0, self.hparams.num_latent_noise_scale, (2 * batch_size,))
-        latent_noise_scale = self.latent_noise_scale_list[latent_noise_idx]
+            latent_noise_idx = torch.randint(0, self.hparams.num_latent_noise_scale, (2 * batch_size,))
+            latent_noise_scale = self.latent_noise_scale_list[latent_noise_idx]
 
-        self.src_vae.eval()
-        self.tgt_vae.eval()
+            self.src_vae.eval()
+            self.tgt_vae.eval()
 
-        recon_x1, z1, mean1, logvar1 = self.src_vae(x1)
-        recon_x2, z2, mean2, logvar2 = self.tgt_vae(x2)
+            recon_x1, z1, mean1, logvar1 = self.src_vae(x1)
+            recon_x2, z2, mean2, logvar2 = self.tgt_vae(x2)
 
-        z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
+            z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
 
-        # update the score model
-        dsm_loss = self.score_model.update_score_fn(z.detach(),
-                                                    latent_noise_idx=latent_noise_idx,
-                                                    optimizer=optimizer_score,
-                                                    max_timestep=None,
-                                                    is_mixing=True,
-                                                    is_residual=True,
-                                                    is_vanilla=self.hparams.is_vanilla,
-                                                    alpha=None)
+            # update the score model
+            dsm_loss = self.score_model.update_score_fn(z,
+                                                        latent_noise_idx=latent_noise_idx,
+                                                        optimizer=optimizer_score,
+                                                        max_timestep=None,
+                                                        is_mixing=True,
+                                                        is_residual=True,
+                                                        is_vanilla=self.hparams.is_vanilla,
+                                                        alpha=None)
 
-        # print(f"dsm_loss: {dsm_loss:.2f}")
+            # print(f"dsm_loss: {dsm_loss:.2f}")
 
-        self.log("loss_detail/dsm_loss", dsm_loss, on_step=True, on_epoch=False, sync_dist=True)
+            self.log("loss_detail/dsm_loss", dsm_loss, on_step=True, on_epoch=False, sync_dist=True)
 
-        # update and log metrics per epoch
-        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
+            # update and log metrics per epoch
+            self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."

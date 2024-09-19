@@ -70,9 +70,12 @@ classifier:
 gp:
   _target_: src.models.components.gp_precomputed_model.GPModule
   _partial_: true
-  metric_name: "CLIP"
-  model_name: "ViT-L-14"
-  pretrained_dataset: "commonpool_xl_s13b_b90k"
+  diff: "MSE"
+  mode: "binarize"
+  dist_x_mode: "cosine"
+  threshold_0: 0.14
+  threshold_1: 0.1
+
 
 vaub_lambda: 1
 gp_lambda: 0.03
@@ -81,15 +84,17 @@ recon_lambda: 1
 min_noise_scale: 0
 max_noise_scale: 0
 num_latent_noise_scale: 1
+init_scale: 0.1
 
 latent_dim: 100
 latent_row_dim: 10
 latent_col_dim: 10
 
-block_size: 256
+block_size: 4096
 cls_lambda: 1e-3
 is_vanilla: true
 loops: 1
+warm_score_epochs: 50
 
 # compile model for faster training with pytorch 2.0
 compile: false
