@@ -6,6 +6,7 @@ import rootutils
 import torch
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
+from lightning.pytorch.profilers import Profiler
 from omegaconf import DictConfig
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
@@ -32,6 +33,7 @@ from src.utils import (
     get_metric_value,
     instantiate_callbacks,
     instantiate_loggers,
+    instantiate_profiler,
     log_hyperparameters,
     task_wrapper,
 )
@@ -66,8 +68,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     log.info("Instantiating loggers...")
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
 
+    log.info("Instantiating profiler...")
+    profiler: List[Profiler] = instantiate_profiler(cfg.get("profiler"))
+
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
-    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
+    trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger, profiler=profiler)
 
     object_dict = {
         "cfg": cfg,
@@ -76,6 +81,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         "callbacks": callbacks,
         "logger": logger,
         "trainer": trainer,
+        "profiler": profiler,
     }
 
     if logger:

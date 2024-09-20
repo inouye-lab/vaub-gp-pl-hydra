@@ -3,6 +3,7 @@ from typing import List
 import hydra
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
+from lightning.pytorch.profilers import Profiler
 from omegaconf import DictConfig
 
 from src.utils import pylogger
@@ -54,3 +55,26 @@ def instantiate_loggers(logger_cfg: DictConfig) -> List[Logger]:
             logger.append(hydra.utils.instantiate(lg_conf))
 
     return logger
+
+
+def instantiate_profiler(profiler_cfg: DictConfig) -> List[Profiler]:
+    """Instantiates profiler from config.
+
+    :param profiler_cfg: A DictConfig object containing profiler configurations.
+    :return: An instantiated profiler.
+    """
+    profiler: List[Profiler] = []
+
+    if not profiler_cfg:
+        log.warning("No profiler configs found! Skipping...")
+        return profiler
+
+    if not isinstance(profiler_cfg, DictConfig):
+        raise TypeError("Profiler config must be a DictConfig!")
+
+    for _, pr_conf in profiler_cfg.items():
+        if isinstance(pr_conf, DictConfig) and "_target_" in pr_conf:
+            log.info(f"Instantiating profiler <{pr_conf._target_}>")
+            profiler.append(hydra.utils.instantiate(pr_conf))
+
+    return profiler

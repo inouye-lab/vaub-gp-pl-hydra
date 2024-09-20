@@ -196,7 +196,7 @@ def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, da
         # Define markers and colors
         markers = {'domain1': 'X', 'domain2': 's'}
         unique_labels = np.unique(labels)
-        palette = sns.color_palette("hsv", len(unique_labels))
+        palette = sns.color_palette("tab10", len(unique_labels))
         color_map = {label: palette[i] for i, label in enumerate(unique_labels)}
 
         # Plot the data

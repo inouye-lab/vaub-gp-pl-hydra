@@ -35,8 +35,11 @@ class CLIPModule(nn.Module):
             similarity_matrix = torch.mm(batch1_norm, batch2_norm.transpose(0, 1))
             return 1-similarity_matrix
 
-        def L2_dist_matrix(batch1, batch2):
+        def L22_dist_matrix(batch1, batch2):
             return torch.cdist(batch1, batch2, p=2)**2
+
+        def L2_dist_matrix(batch1, batch2):
+            return torch.cdist(batch1, batch2, p=2)
 
         dist_matrix_array = []
         for block_index in block_index_list:
@@ -45,8 +48,12 @@ class CLIPModule(nn.Module):
             if self.dist_mode == 'cosine':
                 image_features_1 /= image_features_1.norm(dim=-1, keepdim=True)
                 dist_matrix_array.append(cosine_dist_matrix(image_features_1, image_features_1, dim=-1))
+            elif self.dist_mode == 'L22':
+                dist_matrix_array.append(L22_dist_matrix(image_features_1, image_features_1))
             elif self.dist_mode == 'L2':
                 dist_matrix_array.append(L2_dist_matrix(image_features_1, image_features_1))
+            else:
+                raise ValueError(f"Invalid distance mode in x domain {self.dist_mode}")
 
         return dist_matrix_array
 
@@ -108,6 +115,7 @@ class GPModule(nn.Module):
         )
 
         self.device = device
+        self.dist_x_mode = dist_x_mode
 
     def to_device(self, device):
         self.dist_module.to_device(device)
@@ -130,7 +138,10 @@ class GPModule(nn.Module):
             #
             # # Sum along the feature dimension (last dimension) to get squared distances
             # squared_dists = squared_diffs.mean(dim=-1)
-            squared_dists = torch.cdist(z_block, z_block, p=p)**2
+            if self.dist_x_mode == 'cosine' or self.dist_x_mode == 'L22':
+                squared_dists = torch.cdist(z_block, z_block, p=p)**2
+            elif self.dist_x_mode == 'L2':
+                squared_dists = torch.cdist(z_block, z_block, p=p)
 
             # Take the square root to get Euclidean distances
             # dist_mat_list.append(squared_dists**(1/p))
@@ -167,9 +178,18 @@ class GPModule(nn.Module):
                     dist_mat_z = dist_mat_z / dist_mat_z.max()
                 elif self.mode == "binarize":
                     threshold = self.kwargs.get(f"threshold_{domain_idx}")
+                    dist_mat_x = dist_mat_x / dist_mat_x.max()
+                    dist_mat_z = dist_mat_z / dist_mat_z.max()
                     dist_mat_x[dist_mat_x > threshold] = 1
                     dist_mat_x[dist_mat_x <= threshold] = 0
                     dist_mat_z = dist_mat_z / dist_mat_z.max()
+                elif self.mode == "logistic":
+                    coef = self.kwargs.get(f"coef_{domain_idx}")
+                    intercept = self.kwargs.get(f"intercept_{domain_idx}")
+                    dist_mat_x = dist_mat_x / dist_mat_x.max()
+                    dist_mat_z = dist_mat_z / dist_mat_z.max()
+                    # dist_mat_x = 1 / (1 + torch.exp(-coef*(dist_mat_x-intercept)))
+                    dist_mat_x = 1 / (1 + torch.exp(-(coef * dist_mat_x + intercept)))
                 else:
                     raise ValueError(f"Invalid mode for distance matrix for x space{self.mode}")
 
