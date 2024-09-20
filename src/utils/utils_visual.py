@@ -187,7 +187,7 @@ def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, da
         for domain in colors:
             subset = df[(df['domain'] == domain)]
             axes_total[1].scatter(subset['UMAP1'], subset['UMAP2'], c=[colors[domain]], marker="s",
-                            alpha=1,
+                            alpha=0.6,
                             edgecolors='w', linewidth=0.5, label=f'{domain}')
 
         # Create a combined legend
