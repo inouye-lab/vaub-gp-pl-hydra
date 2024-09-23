@@ -176,6 +176,9 @@ class GPModule(nn.Module):
                 if self.mode == "max":
                     dist_mat_x = dist_mat_x / dist_mat_x.max()
                     dist_mat_z = dist_mat_z / dist_mat_z.max()
+                elif self.mode == "mean":
+                    dist_mat_x = dist_mat_x / dist_mat_x.mean()
+                    dist_mat_z = dist_mat_z / dist_mat_z.mean()
                 elif self.mode == "binarize":
                     threshold = self.kwargs.get(f"threshold_{domain_idx}")
                     dist_mat_x = dist_mat_x / dist_mat_x.max()

@@ -34,6 +34,7 @@ optimizer_cls:
 vae1:
   _target_: src.models.components.vae_res_cnn.ResConvVAE
   type_of_dataset: "mnist"
+  logvar_constraint: "sigmoid"
   is_2d: false
   is_3d: false
   _partial_: true
@@ -41,6 +42,7 @@ vae1:
 vae2:
   _target_: src.models.components.vae_res_cnn.ResConvVAE
   type_of_dataset: "mnist"
+  logvar_constraint: "sigmoid"
   is_2d: false
   is_3d: false
   _partial_: true
@@ -51,7 +53,7 @@ score_prior:
   sigma_min: 0.01
   sigma_max: 0.4
   num_timesteps: 100
-  is_add_latent_noise: true
+  is_add_latent_noise: false
 
 unet:
   _target_: src.models.components.unet.UNet_noise
@@ -99,6 +101,7 @@ cls_lambda: 1e-3
 is_vanilla: true
 loops: 1
 warm_score_epochs: 50
+gather_z: false
 
 # compile model for faster training with pytorch 2.0
 compile: false

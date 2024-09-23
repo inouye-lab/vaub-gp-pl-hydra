@@ -5,7 +5,7 @@ from torchvision.utils import make_grid
 import seaborn as sns
 import umap
 import pandas as pd
-
+import matplotlib.colors as mcolors
 
 # Function to display reconstructed images
 def display_reconstructed_images(epoch, vae_model, data, n_samples=10, dim=[1, 28, 28], is_flip=False):
@@ -68,6 +68,51 @@ def display_reconstructed_and_flip_images(axes, epoch, vae_model, flip_vae_model
 
             axes[2, i].imshow(np.transpose(recon_x_flip[i].detach().cpu().numpy(), (1, 2, 0)), cmap=flip_color)
             axes[2, i].axis('off')
+
+    return plt
+
+
+def display_reconstructed_and_flip_images_multi(axes, epoch, vae_model_list, src_domain_idx, data, n_samples=10,):
+
+    [vae_model.eval() for vae_model in vae_model_list]
+
+    with torch.no_grad():
+        data = data[:n_samples]
+        recon_x, z, _, _ = vae_model_list[src_domain_idx](data)
+        recon_x_flip_list = []
+        for i, vae_model in enumerate(vae_model_list):
+            if i == src_domain_idx:
+                continue
+            recon_x_flip_list.append(vae_model_list[i].decode(z))
+
+        if len(data.shape) == 3:
+            data = data.unsqueeze(1)
+            recon_x = recon_x.unsqueeze(1)
+
+        if data.shape[1] == 1:
+            src_color = 'gray'
+        else:
+            src_color = None
+
+        for i in range(n_samples):
+            axes[0, i].imshow(np.transpose(data[i].detach().cpu().numpy(), (1, 2, 0)), cmap=src_color)
+            axes[0, i].axis('off')
+
+            axes[1, i].imshow(np.transpose(recon_x[i].detach().cpu().numpy(), (1, 2, 0)), cmap=src_color)
+            axes[1, i].axis('off')
+
+            for j, recon_x_flip in enumerate(recon_x_flip_list):
+
+                if len(recon_x_flip.shape) == 3:
+                    recon_x_flip = recon_x_flip.unsqueeze(1)
+
+                if data.shape[1] == 1:
+                    tgt_color = 'gray'
+                else:
+                    tgt_color = None
+
+                axes[j+2, i].imshow(np.transpose(recon_x_flip[i].detach().cpu().numpy(), (1, 2, 0)), cmap=tgt_color)
+                axes[j+2, i].axis('off')
 
     return plt
 
@@ -207,9 +252,9 @@ def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, da
                            edgecolors='w', linewidth=0.5, label=f'{domain}-{label}')
 
         # Create a combined legend
-        handles, _ = axes_total[0].get_legend_handles_labels()
-        by_label = dict(zip(handles, _))
-        axes_total[0].legend(by_label.values(), by_label.keys(), title='Domain-Label', loc='best', bbox_to_anchor=(1.05, 1))
+        # handles, _ = axes_total[0].get_legend_handles_labels()
+        # by_label = dict(zip(handles, _))
+        # axes_total[0].legend(by_label.values(), by_label.keys(), title='Domain-Label', loc='best', bbox_to_anchor=(1.05, 1))
 
         axes_total[0].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
 
@@ -223,6 +268,74 @@ def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, da
             axes_individual[count // 5, count % 5].set_title(f'Label {label} at Epoch {epoch}')
             # axes_individual[count // 5, count % 5].axis('off')
             count += 1
+
+
+    return axes_total, axes_individual
+
+def display_umap_for_latent_multi(axes_total, axes_individual, epoch, z_list, label_list):
+
+    # Combine the datasets
+    data = np.vstack([z.cpu() for z in z_list])
+    labels = np.concatenate([label.cpu() for label in label_list])
+    domains = np.concatenate([[f'domain{i}']*len(z.cpu()) for i, z in enumerate(z_list)])
+
+    # Fit and transform the data using UMAP
+    reducer = umap.UMAP()
+    embedding = reducer.fit_transform(data)
+
+    # Create a DataFrame for easier handling
+    df = pd.DataFrame(embedding, columns=['UMAP1', 'UMAP2'])
+    df['label'] = labels
+    df['domain'] = domains
+
+    # Define markers and colors
+    color_list = list(mcolors.BASE_COLORS)
+    colors = {f'domain{i}': color_list[i] for i in range(len(z_list))}
+
+    unique_labels = np.unique(labels)
+    palette = sns.color_palette("hsv", len(unique_labels))
+    color_map = {label: palette[i] for i, label in enumerate(unique_labels)}
+
+    # Plot the data
+    for domain in colors:
+        subset = df[(df['domain'] == domain)]
+        axes_total[1].scatter(subset['UMAP1'], subset['UMAP2'], c=[colors[domain]], marker="s",
+                        alpha=0.6,
+                        edgecolors='w', linewidth=0.5, label=f'{domain}')
+
+    # Create a combined legend
+    axes_total[1].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
+
+    # Define markers and colors
+    markers = {'domain1': 'X', 'domain2': 's'}
+    unique_labels = np.unique(labels)
+    palette = sns.color_palette("tab10", len(unique_labels))
+    color_map = {label: palette[i] for i, label in enumerate(unique_labels)}
+
+    # Plot the data
+    for domain in markers:
+        for label in unique_labels:
+            subset = df[(df['domain'] == domain) & (df['label'] == label)]
+            axes_total[0].scatter(subset['UMAP1'], subset['UMAP2'], c=[color_map[label]], marker=markers[domain], alpha=0.6,
+                       edgecolors='w', linewidth=0.5, label=f'{domain}-{label}')
+
+    # Create a combined legend
+    # handles, _ = axes_total[0].get_legend_handles_labels()
+    # by_label = dict(zip(handles, _))
+    # axes_total[0].legend(by_label.values(), by_label.keys(), title='Domain-Label', loc='best', bbox_to_anchor=(1.05, 1))
+
+    axes_total[0].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
+
+    # Plot the data
+    count = 0
+    for label in unique_labels:
+        for domain in markers:
+            subset = df[(df['domain'] == domain) & (df['label'] == label)]
+            axes_individual[count//5, count%5].scatter(subset['UMAP1'], subset['UMAP2'], c=colors[domain], alpha=0.6,
+                       edgecolors='w', linewidth=0.5, label=f'{domain}-{label}')
+        axes_individual[count // 5, count % 5].set_title(f'Label {label} at Epoch {epoch}')
+        # axes_individual[count // 5, count % 5].axis('off')
+        count += 1
 
 
     return axes_total, axes_individual

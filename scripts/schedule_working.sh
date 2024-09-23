@@ -80,5 +80,66 @@
 #CUDA_VISIBLE_DEVICES=1 python src/train.py trainer.devices=1 trainer.max_epochs=20000 model.warm_score_epochs=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_long
 
 # fixed more bugs
-python src/train.py trainer.devices=1 trainer.max_epochs=1000 model.warm_score_epochs=0 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init
-python src/train.py trainer.devices=1 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_w_warm_init_sigma_max_1
+#python src/train.py trainer.devices=1 trainer.max_epochs=1000 model.warm_score_epochs=0 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init
+#python src/train.py trainer.devices=1 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_1
+#python src/train.py trainer.devices=1 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1.5 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_1.5
+#python src/train.py trainer.devices=1 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=2 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_2
+
+#python src/train.py trainer.devices=1 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MSE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MSE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_1
+#python src/train.py trainer.devices=1 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-0 model.loops=5 model.gp.mode="max" model.gp.diff="MSE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MSE_gp_5e-0_max_L2_loop_5_wo_warm_init_sigma_max_1
+
+
+#python src/train.py trainer.devices=1 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="cosine" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MSE_gp_5e-1_max_cos_loop_5_wo_warm_init_sigma_max_1
+
+# true L2 norm
+#python src/train.py trainer.devices=1 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L2" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_true_L2_loop_5_wo_warm_init_sigma_max_1
+
+#CUDA_VISIBLE_DEVICES=1 python src/train.py trainer.devices=1 trainer.max_epochs=10000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-final logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_1
+
+#python src/train.py trainer.devices=1 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=2 model.gp_lambda=1e-0 model.loops=5 model.gp.mode="binarize" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_1e-0_binary_L2_loop_5_wo_warm_init_sigma_max_2
+
+# logistic
+#python src/train.py trainer.devices=1 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="logistic" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_logistic_L2_loop_5_wo_warm_init_sigma_max_1
+#python src/train.py trainer.devices=1 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="logistic" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_logistic_L2_loop_5_wo_warm_init_sigma_max_1
+
+
+#python src/train.py trainer.devices=4 data.batch_size=4096 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_1_gpus_4
+#python src/train.py trainer.devices=1 data.batch_size=1024 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_1_1024
+
+#python src/train.py trainer.devices=4 trainer.strategy=ddp_spawn data.batch_size=4096 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_max_L2_loop_5_wo_warm_init_sigma_max_1_gpus_4_ddp_spawn
+#python src/train.py trainer.devices=1 data.batch_size=1024 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="mean" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_mean_L2_loop_5_wo_warm_init_sigma_max_1_1024
+#python src/train.py trainer.devices=4 data.batch_size=4096 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="mean" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=MAE_gp_5e-1_mean_L2_loop_5_wo_warm_init_sigma_max_1_4096_gpus_4
+
+# sync batch norm
+#python src/train.py trainer.sync_batchnorm=False trainer.devices=4 data.batch_size=4096 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_4096_gpus_4_wo_sync_batchnorm
+
+# increase learning rate
+#python src/train.py model.optimizer_vae_1.lr=5e-4 model.optimizer_vae_2.lr=5e-4 model.optimizer_score.lr=5e-3 model.optimizer_cls.lr=1e-3 trainer.devices=4 data.batch_size=4096 trainer.max_epochs=1000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_4096_gpus_4_5x_lr
+
+
+#python src/train.py trainer.devices=4 data.batch_size=4096 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=0 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_4096_gpus_4
+#python src/train.py trainer.devices=1 data.batch_size=1024 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=0 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_1024_gpus_1
+
+
+
+#python src/train.py trainer.devices=4 data.batch_size=4096 trainer.max_epochs=500 model.warm_score_epochs=500 model.score_prior.sigma_max=1 model.gp_lambda=0 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_4096_gpus_4_warm
+#python src/train.py trainer.devices=1 data.batch_size=1024 trainer.max_epochs=500 model.warm_score_epochs=500 model.score_prior.sigma_max=1 model.gp_lambda=0 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_1024_gpus_1_warm
+
+# with gather z
+python src/train.py trainer.devices=4 data.batch_size=4096 trainer.max_epochs=500 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=0 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" model.gather_z=True logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_4096_gpus_4_warm_gather_z
+
+python src/train.py trainer.devices=4 data.batch_size=4096 trainer.max_epochs=5000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=0 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" model.gather_z=True logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_4096_gpus_4_warm_gather_z_long
+
+python src/train.py trainer.devices=4 data.batch_size=4096 trainer.max_epochs=5000 model.warm_score_epochs=0 model.score_prior.sigma_max=1 model.gp_lambda=5e-1 model.loops=5 model.gp.mode="max" model.gp.diff="MAE" model.gp.dist_x_mode="L22" model.gather_z=True logger.wandb.project=vaub-gp-working-fixed logger.wandb.name=max_4096_gpus_4_gp_5e-1_gather_z_long
+
+
+
+
+
+
+
+
+
+
+
+

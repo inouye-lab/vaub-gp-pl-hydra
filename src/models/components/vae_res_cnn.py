@@ -18,13 +18,15 @@ class ResidualBlockVAE(nn.Module):
         return F.relu(out)
 
 class ResConvVAE(nn.Module):
-    def __init__(self, latent_height=8, latent_width=8, type_of_dataset='mnist', is_2d=False, is_3d=False):
+    def __init__(self, latent_height=8, latent_width=8, type_of_dataset='mnist', is_2d=False, is_3d=False,
+                 logvar_constraint='sigmoid'):
+
         super(ResConvVAE, self).__init__()
         self.latent_height = latent_height
         self.latent_width = latent_width
 
         self.encoder = ResConvEncoder(latent_size=latent_height * latent_width, type_of_dataset=type_of_dataset,
-                                      is_2d=is_2d, is_3d=is_3d)
+                                      is_2d=is_2d, is_3d=is_3d, logvar_constraint=logvar_constraint)
         self.decoder = ResConvDecoder(latent_size=latent_height * latent_width, type_of_dataset=type_of_dataset,
                                       is_2d=is_2d, is_3d=is_3d)
 
@@ -62,7 +64,7 @@ class ResConvVAE(nn.Module):
 
 
 class ResConvEncoder(nn.Module):
-    def __init__(self, latent_size=64, type_of_dataset='mnist', is_2d=False, is_3d=False):
+    def __init__(self, latent_size=64, type_of_dataset='mnist', is_2d=False, is_3d=False, logvar_constraint='sigmoid'):
         super(ResConvEncoder, self).__init__()
         self.latent_size = latent_size
         self.conv1 = nn.Conv2d(1, 16, 4, 2, 1)  # (batch_size, 32, 14, 14)
@@ -92,6 +94,8 @@ class ResConvEncoder(nn.Module):
         self.bn_mu = nn.BatchNorm1d(latent_size, affine=False)
         self.bn_var = nn.BatchNorm1d(latent_size, affine=True)
 
+        self.logvar_constraint = logvar_constraint
+
     def forward(self, x):
         # print(x.shape)
         x = F.relu(self.conv1(x))
@@ -114,7 +118,12 @@ class ResConvEncoder(nn.Module):
         else:
             mu, logvar = x.chunk(2, dim=-1)
             # logvar = 10 * F.tanh(logvar)
-            logvar = 7 * (torch.sigmoid(logvar) - 0.5)
+            if self.logvar_constraint == 'sigmoid':
+                logvar = 7 * (torch.sigmoid(logvar) - 0.5)
+            elif self.logvar_constraint == 'clamp':
+                logvar = torch.clamp(logvar, max=4)
+            else:
+                raise ValueError(f"Invalid logvar_constraint: {self.logvar_constraint}")
             # logvar = F.leaky_relu(logvar, 0.1) # For stability reasons
             # print("Here!!!!!!!!!", mu.shape)
             mu = self.bn_mu(mu.view(mu.shape[0], -1))
